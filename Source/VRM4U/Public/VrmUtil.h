@@ -404,6 +404,9 @@ public:
 	bool bSkipPhysics = true;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "VRM4U")
+	bool bSkipRetargeter = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "VRM4U")
 	bool bSkipMorphTarget = false;
 
 	bool bEnableMorphTargetNormal = false;
@@ -551,6 +554,11 @@ public:
 	static class UVrmAssetListObject* GetAssetListObject(const USkeletalMesh *);
 
 	static void CloseEditorWindowByFolderPath(const UObject* obj);
+
+	static int GetChildBone(const USkeleton* skeleton, const int32 ParentBoneIndex, bool recursive, TArray<int32>& Children);
+	static int GetChildBone(const USkeleton* skeleton, const int32 ParentBoneIndex, TArray<int32>& Children) {
+		return GetChildBone(skeleton, ParentBoneIndex, true, Children);
+	}
 
 };
 

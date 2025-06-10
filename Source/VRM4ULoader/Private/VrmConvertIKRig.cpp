@@ -261,7 +261,44 @@ namespace {
 					
 				}
 #else
-				// todo 5.6
+				for (int i = 0; i < a.Num(); ++i) {
+
+					USkeletalMesh* sk = assetList->SkeletalMesh;
+
+					//auto boneList = VRMGetRefSkeleton(sk).GetRefBonePose();
+					auto ind = VRMGetRefSkeleton(sk).FindBoneIndex(*a[i]);
+
+					if (ind < 0) continue;
+
+					auto goal = rigcon->AddNewGoal(*(a[i] + TEXT("_Goal")), *a[i]);
+					if (goal != NAME_None) {
+						rigcon->ConnectGoalToSolver(goal, sol_index);
+
+						// arm chain
+						if (i == 0 || i == 1) {
+							auto* sc = Cast<UIKRigFBIKController>(rigcon->GetSolverController(sol_index));
+
+							if (sc) {
+								auto settings = sc->GetGoalSettings(goal);
+								settings.PullChainAlpha = 0.f;
+								sc->SetGoalSettings(goal, settings);
+							}
+
+							//UIKRig_FBIKEffector* e = Cast<UIKRig_FBIKEffector>(sol->GetGoalSettings(goal));
+							//if (e) {
+							//	e->PullChainAlpha = 0.f;
+							//}
+						}
+
+						const auto& chain = rigcon->GetRetargetChains();
+						for (auto& c : chain) {
+							if (c.EndBone.BoneName == *a[i]) {
+								rigcon->SetRetargetChainGoal(c.ChainName, goal);
+							}
+						}
+					}
+
+				}
 #endif
 			}// bvh
 		}
@@ -684,7 +721,10 @@ public:
 		//FScopedTransaction Transaction(LOCTEXT("SetRetargetRootBone_Label", "Set Retarget Root Bone"));
 		RigDefinition->Modify();
 
+#if	UE_VERSION_OLDER_THAN(5,6,0)
 		*const_cast<FName*>(&RigDefinition->GetRetargetRoot()) = NewRootBone;
+#else
+#endif
 
 		//BroadcastNeedsReinitialized();
 
@@ -1171,7 +1211,7 @@ bool VRMConverter::ConvertIKRig(UVrmAssetListObject *vrmAssetList) {
 				auto SourceOrTargetVRM = ERetargetSourceOrTarget::Target;
 				auto SourceOrTargetMannequin = ERetargetSourceOrTarget::Source;
 
-				if (Options::Get().IsVRMAModel()) {
+				if (Options::Get().IsVRMAModel() || Options::Get().IsBVHModel()) {
 					SourceOrTargetVRM = ERetargetSourceOrTarget::Source;
 					SourceOrTargetMannequin = ERetargetSourceOrTarget::Target;
 
@@ -1232,7 +1272,16 @@ bool VRMConverter::ConvertIKRig(UVrmAssetListObject *vrmAssetList) {
 
 						FReferenceSkeleton& RefSkeleton = sk->GetRefSkeleton();
 						const TArray<FTransform>& RefPose = RefSkeleton.GetRefBonePose();
+#if WITH_EDITOR
+#if	UE_VERSION_OLDER_THAN(5,6,0)
 						const FName RetargetRootBoneName = table_rig_ik[ikr_to_ik[ikr_no]]->GetRetargetRoot();
+#else
+						auto rigc = UIKRigController::GetController(table_rig_ik[ikr_to_ik[ikr_no]]);
+						const FName RetargetRootBoneName = rigc->GetRetargetRoot();
+#endif
+#else
+						const FName RetargetRootBoneName = "";
+#endif
 						for (int32 BoneIndex = 0; BoneIndex < RefSkeleton.GetNum(); ++BoneIndex)
 						{
 							auto BoneName = RefSkeleton.GetBoneName(BoneIndex);
@@ -1309,13 +1358,16 @@ bool VRMConverter::ConvertIKRig(UVrmAssetListObject *vrmAssetList) {
 					c.SetCurrentRetargetPose(UIKRetargeter::GetDefaultPoseName(), SourceOrTargetMannequin);
 
 					// 自動で姿勢を作る。
-					// ただし足首はそのまま。自動設定がうまく動作しないため。
-					c.AutoAlignAllBones(SourceOrTargetMannequin);
-					c.SetRotationOffsetForRetargetPoseBone(TEXT("foot_l"), FQuat::Identity, SourceOrTargetMannequin);
-					c.SetRotationOffsetForRetargetPoseBone(TEXT("foot_r"), FQuat::Identity, SourceOrTargetMannequin);
 
-					// VRM側は変更しない
-					//c.AutoAlignAllBones(SourceOrTargetVRM);
+					if (VRMConverter::Options::Get().IsBVHModel()) {
+						// bvhは bvh側をalignする
+						c.AutoAlignAllBones(SourceOrTargetVRM);
+					}else{
+						// 足首はそのまま。自動設定がうまく動作しないため。
+						c.AutoAlignAllBones(SourceOrTargetMannequin);
+						c.SetRotationOffsetForRetargetPoseBone(TEXT("foot_l"), FQuat::Identity, SourceOrTargetMannequin);
+						c.SetRotationOffsetForRetargetPoseBone(TEXT("foot_r"), FQuat::Identity, SourceOrTargetMannequin);
+					}
 #endif
 				}
 				c.SetChainSetting();
